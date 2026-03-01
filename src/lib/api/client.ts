@@ -1,6 +1,6 @@
 import { authStore } from '$lib/stores/auth.svelte';
 
-const BASE_URL = 'http://localhost:3000/api/v1'; // Adjust if your backend port differs
+const BASE_URL = 'http://localhost/api/v1'; // Adjust if your backend port differs
 
 type FetchOptions = RequestInit & {
   params?: Record<string, string>;

@@ -1,14 +1,22 @@
 <script lang="ts">
   import { notesStore } from '$lib/stores/notes.svelte';
+  import { NotesService } from '$lib/services/notes.service';
 
   function handleSelect(id: number) {
-    notesStore.selectNote(id);
+    NotesService.selectNote(id);
+  }
+
+  function handleCreate() {
+    NotesService.createNote();
   }
 </script>
 
 <div class="note-list">
   <div class="header">
-    <h2>Notes</h2>
+    <div class="top-row">
+      <h2>Notes</h2>
+      <button class="create-btn" onclick={handleCreate}>+</button>
+    </div>
     <div class="toggles">
       <button 
         class:active={notesStore.filterMode === 'mine'} 
@@ -48,6 +56,17 @@
     padding: 1rem;
     border-bottom: 1px solid #eee;
   }
+  .top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+  .create-btn {
+    padding: 0.25rem 0.75rem;
+    font-size: 1.2rem;
+    line-height: 1;
+  }
   ul {
     list-style: none;
     padding: 0;
@@ -83,7 +102,6 @@
   .toggles {
     display: flex;
     gap: 0.5rem;
-    margin-top: 0.5rem;
   }
   .toggles button {
     flex: 1;

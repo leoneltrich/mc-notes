@@ -1,13 +1,13 @@
 <script lang="ts">
   import { authStore } from '$lib/stores/auth.svelte';
-  import { notesStore } from '$lib/stores/notes.svelte';
+  import { NotesService } from '$lib/services/notes.service';
   import NoteList from '$lib/components/organisms/NoteList.svelte';
   import NoteEditor from '$lib/components/organisms/NoteEditor.svelte';
 
   $effect(() => {
     authStore.init().then(() => {
       if (authStore.isAuthenticated) {
-        notesStore.fetchNotes();
+        NotesService.loadNotes();
       }
     });
   });
