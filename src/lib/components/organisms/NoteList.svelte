@@ -11,13 +11,13 @@
   }
 
   function formatRelativeTime(timestamp: number) {
-    const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+    const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto', style: 'short' });
     const diff = Math.floor(timestamp - Date.now() / 1000);
     
-    if (Math.abs(diff) < 60) return 'Just now';
+    if (Math.abs(diff) < 60) return 'now';
     if (Math.abs(diff) < 3600) return rtf.format(Math.floor(diff / 60), 'minute');
     if (Math.abs(diff) < 86400) return rtf.format(Math.floor(diff / 3600), 'hour');
-    return new Date(timestamp * 1000).toLocaleDateString();
+    return new Date(timestamp * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
 </script>
 
@@ -26,11 +26,12 @@
     <div class="top-row">
       <h1>Notes</h1>
       <button class="create-btn" onclick={handleCreate} aria-label="Create new note">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
       </button>
     </div>
     
     <div class="filter-tabs">
+      <div class="active-indicator" style="transform: translateX({notesStore.filterMode === 'mine' ? '0%' : '100%'})"></div>
       <button 
         class:active={notesStore.filterMode === 'mine'} 
         onclick={() => notesStore.filterMode = 'mine'}>
@@ -41,7 +42,6 @@
         onclick={() => notesStore.filterMode = 'public'}>
         Shared
       </button>
-      <div class="active-indicator" style="left: {notesStore.filterMode === 'mine' ? '0' : '50%'}"></div>
     </div>
   </header>
 
@@ -61,11 +61,14 @@
               <div class="note-header">
                 <span class="title">
                   {note.title || 'Untitled Note'}
-                  {#if note.is_public_read}
-                    <span class="public-badge" title="Public Note">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                    </span>
-                  {/if}
+                  <div class="status-indicators">
+                    {#if note.is_public_read}
+                      <span class="status-dot" title="Public (Read-only)">R</span>
+                    {/if}
+                    {#if note.is_public_write}
+                      <span class="status-dot write" title="Public (Writable)">W</span>
+                    {/if}
+                  </div>
                 </span>
                 <span class="time">{formatRelativeTime(note.timestamp_modified || note.timestamp_created)}</span>
               </div>
@@ -87,7 +90,7 @@
   }
 
   .header {
-    padding: 1.5rem 1.25rem 1rem;
+    padding: 1.25rem 1rem 0.75rem;
     border-bottom: 1px solid var(--border-color);
   }
 
@@ -95,51 +98,51 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
   }
 
   h1 {
-    font-size: 1.5rem;
+    font-size: 1.25rem;
     font-weight: 700;
     margin: 0;
     color: var(--text-primary);
+    letter-spacing: -0.01em;
   }
 
   .create-btn {
-    background: var(--accent-primary);
-    color: white;
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
+    background: var(--text-primary);
+    color: var(--bg-primary);
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
   }
 
   .create-btn:hover {
     background: var(--accent-secondary);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 6px rgba(59, 130, 246, 0.4);
   }
 
   .filter-tabs {
     display: flex;
     position: relative;
     background: var(--bg-tertiary);
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 2px;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
   }
 
   .filter-tabs button {
     flex: 1;
-    padding: 0.5rem;
-    font-size: 0.875rem;
-    font-weight: 500;
+    padding: 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 600;
     color: var(--text-secondary);
     z-index: 1;
-    border-radius: 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
 
   .filter-tabs button.active {
@@ -149,12 +152,13 @@
   .active-indicator {
     position: absolute;
     top: 2px;
+    left: 2px;
     bottom: 2px;
     width: calc(50% - 2px);
     background: var(--bg-primary);
-    border-radius: 6px;
+    border-radius: 4px;
     box-shadow: var(--shadow-sm);
-    transition: left 0.2s ease;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .notes-scroll-area {
@@ -170,29 +174,25 @@
   }
 
   .note-item-wrapper {
-    margin-bottom: 4px;
+    margin-bottom: 2px;
   }
 
   .note-item {
     width: 100%;
     text-align: left;
-    padding: 1rem;
-    border-radius: 10px;
+    padding: 0.85rem;
+    border-radius: 8px;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.35rem;
   }
 
   .note-item:hover {
-    background-color: var(--bg-tertiary);
+    background-color: var(--bg-secondary);
   }
 
   .note-item.selected {
     background-color: var(--accent-soft);
-  }
-
-  .note-item.selected .title {
-    color: var(--accent-primary);
   }
 
   .note-header {
@@ -205,7 +205,7 @@
   .title {
     font-weight: 600;
     color: var(--text-primary);
-    font-size: 0.95rem;
+    font-size: 0.875rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -215,23 +215,42 @@
     gap: 0.5rem;
   }
 
-  .public-badge {
-    display: inline-flex;
+  .status-indicators {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .status-dot {
+    font-size: 0.6rem;
+    font-weight: 800;
+    width: 12px;
+    height: 12px;
+    background: var(--border-color);
+    color: var(--text-tertiary);
+    display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--text-tertiary);
-    flex-shrink: 0;
+    border-radius: 2px;
+    line-height: 1;
+  }
+
+  .status-dot.write {
+    background: var(--text-secondary);
+    color: var(--bg-primary);
   }
 
   .time {
     color: var(--text-tertiary);
-    font-size: 0.75rem;
+    font-size: 0.65rem;
+    font-weight: 500;
     white-space: nowrap;
+    margin-top: 0.15rem;
   }
 
   .preview {
     color: var(--text-secondary);
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     margin: 0;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -244,5 +263,6 @@
     padding: 3rem 1rem;
     text-align: center;
     color: var(--text-tertiary);
+    font-size: 0.875rem;
   }
 </style>
