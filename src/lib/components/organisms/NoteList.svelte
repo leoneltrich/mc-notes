@@ -11,13 +11,13 @@
   }
 
   function formatRelativeTime(timestamp: number) {
-    const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto', style: 'short' });
+    const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto', style: 'short' });
     const diff = Math.floor(timestamp - Date.now() / 1000);
     
     if (Math.abs(diff) < 60) return 'now';
     if (Math.abs(diff) < 3600) return rtf.format(Math.floor(diff / 60), 'minute');
     if (Math.abs(diff) < 86400) return rtf.format(Math.floor(diff / 3600), 'hour');
-    return new Date(timestamp * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return new Date(timestamp * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
 </script>
 
