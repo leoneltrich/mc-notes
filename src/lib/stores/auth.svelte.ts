@@ -18,8 +18,6 @@ class AuthStore {
     if (token) {
       this.setToken(token);
     } else {
-      // If no token, check again in 5 seconds (polling fallback if main app logs in later)
-      // or just leave it to manual reload. For now, let's just clear.
       this.accessToken = null;
     }
   }
@@ -38,10 +36,8 @@ class AuthStore {
     const exp = getJwtExpiration(token);
     if (!exp) return;
 
-    // Refresh 20 seconds before expiration
-    // exp is in seconds, Date.now() in ms
     const expiresInMs = (exp * 1000) - Date.now();
-    const refreshDelay = Math.max(0, expiresInMs - 20000); // 20s buffer
+    const refreshDelay = Math.max(0, expiresInMs - 20000);
 
     console.log(`Token expires in ${Math.round(expiresInMs / 1000)}s. Refreshing in ${Math.round(refreshDelay / 1000)}s`);
 

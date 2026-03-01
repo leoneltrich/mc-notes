@@ -3,7 +3,6 @@
   import { NotesService } from '$lib/services/notes.service';
 
   let note = $derived(notesStore.selectedNote);
-  let timeout: ReturnType<typeof setTimeout>;
 
   function handleInput(type: 'title' | 'content', event: Event) {
     if (!note) return;
@@ -27,9 +26,8 @@
     </div>
     <textarea 
       class="content-input" 
-      value={note.content} 
       oninput={(e) => handleInput('content', e)}
-    ></textarea>
+    >{note.content}</textarea>
   {:else}
     <div class="placeholder">
       <p>Select a note to view</p>

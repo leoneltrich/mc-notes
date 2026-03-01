@@ -1,6 +1,7 @@
 import { authStore } from '$lib/stores/auth.svelte';
+import { fetch } from '@tauri-apps/plugin-http';
 
-const BASE_URL = 'http://localhost/api/v1'; // Adjust if your backend port differs
+const BASE_URL = 'http://localhost/api/v1';
 
 type FetchOptions = RequestInit & {
   params?: Record<string, string>;
@@ -27,7 +28,6 @@ export async function apiClient<T>(endpoint: string, options: FetchOptions = {})
 
   if (!response.ok) {
     if (response.status === 401) {
-      // Handle token expiration if needed
       console.error('Unauthorized request');
     }
     const errorBody = await response.json().catch(() => ({ message: 'Unknown error' }));
