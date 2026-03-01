@@ -5,6 +5,7 @@ import type { UpdateNoteRequest } from '$lib/types/api';
 
 let saveTimeout: ReturnType<typeof setTimeout>;
 let pollInterval: ReturnType<typeof setInterval>;
+let pendingSaveId: number | null = null;
 
 export class NotesService {
   static async loadNotes(silent = false) {
@@ -13,8 +14,29 @@ export class NotesService {
     if (!silent) notesStore.setLoading(true);
     try {
       const response = await NotesApi.getAll();
+      const serverNotes = response.data;
 
-      notesStore.setNotes(response.data);
+      if (pendingSaveId !== null) {
+        const currentLocalNotes = notesStore.notes;
+        const mergedNotes = serverNotes.map(sn => {
+          if (sn.note_id === pendingSaveId) {
+            const localNote = currentLocalNotes.find(ln => ln.note_id === sn.note_id);
+            if (localNote) {
+              return { 
+                ...sn, 
+                content: localNote.content, 
+                title: localNote.title,
+                is_public_read: localNote.is_public_read,
+                is_public_write: localNote.is_public_write
+              };
+            }
+          }
+          return sn;
+        });
+        notesStore.setNotes(mergedNotes);
+      } else {
+        notesStore.setNotes(serverNotes);
+      }
     } catch (error) {
       console.error('Failed to load notes:', error);
     } finally {
@@ -64,14 +86,17 @@ export class NotesService {
   }
 
   static async updateNote(id: number, data: Partial<UpdateNoteRequest>) {
-    // 1. Optimistic update (Immediate)
+    pendingSaveId = id;
     notesStore.updateNoteInList(id, data);
 
     clearTimeout(saveTimeout);
     saveTimeout = setTimeout(async () => {
       try {
         const currentNote = notesStore.notes.find(n => n.note_id === id);
-        if (!currentNote) return;
+        if (!currentNote) {
+          pendingSaveId = null;
+          return;
+        }
 
         console.log('Saving note...', id);
         await NotesApi.update({
@@ -82,9 +107,14 @@ export class NotesService {
           is_public_write: currentNote.is_public_write
         });
         console.log('Note saved.');
+        
+        if (pendingSaveId === id) {
+          pendingSaveId = null;
+        }
       } catch (error) {
-        await this.loadNotes();
         console.error('Failed to update note:', error);
+        pendingSaveId = null;
+        await this.loadNotes();
       }
     }, 500);
   }
@@ -92,7 +122,6 @@ export class NotesService {
   static async deleteNote(id: number) {
     if (!authStore.isAuthenticated) return;
 
-    const previousNotes = [...notesStore.notes];
     notesStore.removeNoteFromList(id);
 
     try {
