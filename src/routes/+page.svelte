@@ -14,21 +14,26 @@
 </script>
 
 {#if authStore.isLoading}
-  <div class="loading">Loading...</div>
+  <div class="loading">
+    <div class="spinner"></div>
+    <span>Loading application...</span>
+  </div>
 {:else if !authStore.isAuthenticated}
   <div class="auth-error">
-    <h2>Access Denied</h2>
-    <p>Please log in to the main application to access your notes.</p>
+    <div class="card">
+      <h2>Access Denied</h2>
+      <p>Please log in to the main application to access your notes.</p>
+    </div>
   </div>
 {:else}
-  <div class="page-container">
-    <div class="left-pane">
+  <main class="app-container">
+    <aside class="sidebar">
       <NoteList />
-    </div>
-    <div class="right-pane">
+    </aside>
+    <section class="main-content">
       <NoteEditor />
-    </div>
-  </div>
+    </section>
+  </main>
 {/if}
 
 <style>
@@ -38,19 +43,66 @@
     align-items: center;
     justify-content: center;
     height: 100vh;
+    background-color: var(--bg-secondary);
+    color: var(--text-secondary);
   }
-  .page-container {
+
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--accent-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 1rem;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .card {
+    background: var(--bg-primary);
+    padding: 2.5rem;
+    border-radius: 12px;
+    box-shadow: var(--shadow-md);
+    text-align: center;
+    max-width: 400px;
+    border: 1px solid var(--border-color);
+  }
+
+  .card h2 {
+    margin: 0 0 1rem;
+    color: var(--text-primary);
+  }
+
+  .app-container {
     display: grid;
-    grid-template-columns: 1fr 2fr;
+    grid-template-columns: 320px 1fr;
     height: 100vh;
     width: 100vw;
+    background-color: var(--bg-primary);
   }
-  .left-pane {
-    border-right: 1px solid #e0e0e0;
+
+  .sidebar {
+    background-color: var(--bg-secondary);
+    border-right: 1px solid var(--border-color);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .main-content {
+    background-color: var(--bg-primary);
     overflow: hidden;
   }
-  .right-pane {
-    padding: 2rem;
-    overflow: hidden;
+
+  @media (max-width: 768px) {
+    .app-container {
+      grid-template-columns: 1fr;
+    }
+    .sidebar {
+      display: none; /* Hide for now, or implement a mobile drawer later */
+    }
   }
 </style>
