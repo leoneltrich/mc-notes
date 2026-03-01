@@ -4,19 +4,34 @@ import { authStore } from '$lib/stores/auth.svelte';
 import type { UpdateNoteRequest } from '$lib/types/api';
 
 let saveTimeout: ReturnType<typeof setTimeout>;
+let pollInterval: ReturnType<typeof setInterval>;
 
 export class NotesService {
-  static async loadNotes() {
+  static async loadNotes(silent = false) {
     if (!authStore.isAuthenticated) return;
     
-    notesStore.setLoading(true);
+    if (!silent) notesStore.setLoading(true);
     try {
       const response = await NotesApi.getAll();
+
       notesStore.setNotes(response.data);
     } catch (error) {
       console.error('Failed to load notes:', error);
     } finally {
-      notesStore.setLoading(false);
+      if (!silent) notesStore.setLoading(false);
+    }
+  }
+
+  static startPolling() {
+    this.stopPolling();
+    pollInterval = setInterval(() => {
+      this.loadNotes(true);
+    }, 5000);
+  }
+
+  static stopPolling() {
+    if (pollInterval) {
+      clearInterval(pollInterval);
     }
   }
 
@@ -52,7 +67,6 @@ export class NotesService {
     // 1. Optimistic update (Immediate)
     notesStore.updateNoteInList(id, data);
 
-    // 2. Debounced API Call
     clearTimeout(saveTimeout);
     saveTimeout = setTimeout(async () => {
       try {
@@ -69,9 +83,25 @@ export class NotesService {
         });
         console.log('Note saved.');
       } catch (error) {
+        await this.loadNotes();
         console.error('Failed to update note:', error);
-        // Ideally revert the optimistic update here or show an error status
       }
-    }, 500); // 500ms debounce
+    }, 500);
+  }
+
+  static async deleteNote(id: number) {
+    if (!authStore.isAuthenticated) return;
+
+    const previousNotes = [...notesStore.notes];
+    notesStore.removeNoteFromList(id);
+
+    try {
+      console.log('Deleting note...', id);
+      await NotesApi.delete(id);
+      console.log('Note deleted.');
+    } catch (error) {
+      console.error('Failed to delete note:', error);
+      await this.loadNotes();
+    }
   }
 }

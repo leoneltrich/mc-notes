@@ -1,15 +1,25 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
   import { authStore } from '$lib/stores/auth.svelte';
   import { NotesService } from '$lib/services/notes.service';
   import NoteList from '$lib/components/organisms/NoteList.svelte';
   import NoteEditor from '$lib/components/organisms/NoteEditor.svelte';
 
   $effect(() => {
-    authStore.init().then(() => {
-      if (authStore.isAuthenticated) {
-        NotesService.loadNotes();
-      }
-    });
+    if (authStore.isAuthenticated) {
+      NotesService.loadNotes();
+      NotesService.startPolling();
+    } else {
+      NotesService.stopPolling();
+    }
+  });
+
+  onMount(() => {
+    authStore.init();
+  });
+
+  onDestroy(() => {
+    NotesService.stopPolling();
   });
 </script>
 
