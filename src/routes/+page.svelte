@@ -26,13 +26,19 @@
 {#if authStore.isLoading}
   <div class="loading">
     <div class="spinner"></div>
-    <span>Loading application...</span>
+    <span>Checking session...</span>
   </div>
 {:else if !authStore.isAuthenticated}
   <div class="auth-error">
     <div class="card">
-      <h2>Access Denied</h2>
-      <p>Please log in to the main application to access your notes.</p>
+      {#if authStore.isExpired}
+        <h2>Session Expired</h2>
+        <p>Your session has expired. Please log in again to the main application to continue.</p>
+      {:else}
+        <h2>Access Denied</h2>
+        <p>Please log in to the main application to access your notes.</p>
+      {/if}
+      <div class="polling-hint">Checking for active session...</div>
     </div>
   </div>
 {:else}
@@ -84,6 +90,21 @@
   .card h2 {
     margin: 0 0 1rem;
     color: var(--text-primary);
+    font-size: 1.5rem;
+    letter-spacing: -0.02em;
+  }
+
+  .card p {
+    margin-bottom: 1.5rem;
+    line-height: 1.6;
+  }
+
+  .polling-hint {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
   }
 
   .app-container {
@@ -112,7 +133,7 @@
       grid-template-columns: 1fr;
     }
     .sidebar {
-      display: none; /* Hide for now, or implement a mobile drawer later */
+      display: none;
     }
   }
 </style>

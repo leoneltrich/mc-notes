@@ -87,7 +87,10 @@ export class NotesService {
 
   static async updateNote(id: number, data: Partial<UpdateNoteRequest>) {
     pendingSaveId = id;
-    notesStore.updateNoteInList(id, data);
+    
+    // Update locally including the timestamp to trigger immediate re-sort to the top
+    const now = Math.floor(Date.now() / 1000);
+    notesStore.updateNoteInList(id, { ...data, timestamp_modified: now });
 
     clearTimeout(saveTimeout);
     saveTimeout = setTimeout(async () => {
