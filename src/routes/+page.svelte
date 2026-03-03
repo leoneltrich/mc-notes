@@ -34,6 +34,12 @@
       {#if authStore.isExpired}
         <h2>Session Expired</h2>
         <p>Your session has expired. Please log in again to the main application to continue.</p>
+      {:else if authStore.errorMessage}
+        <h2>Authentication Issue</h2>
+        <div class="error-detail">
+          <p>{authStore.errorMessage}</p>
+        </div>
+        <p class="instruction">Ensure the ServeMe Main App is running and you are logged in.</p>
       {:else}
         <h2>Access Denied</h2>
         <p>Please log in to the main application to access your notes.</p>
@@ -83,7 +89,7 @@
     border-radius: 12px;
     box-shadow: var(--shadow-md);
     text-align: center;
-    max-width: 400px;
+    max-width: 450px;
     border: 1px solid var(--border-color);
   }
 
@@ -95,12 +101,36 @@
   }
 
   .card p {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
     line-height: 1.6;
+    font-size: 0.9rem;
+  }
+
+  .error-detail {
+    background: var(--bg-tertiary);
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    text-align: left;
+    border-left: 3px solid #ef4444;
+  }
+
+  .error-detail p {
+    margin: 0;
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    word-break: break-word;
+  }
+
+  .instruction {
+    font-weight: 500;
+    color: var(--text-primary);
   }
 
   .polling-hint {
-    font-size: 0.75rem;
+    margin-top: 1.5rem;
+    font-size: 0.7rem;
     color: var(--text-tertiary);
     text-transform: uppercase;
     letter-spacing: 0.05em;

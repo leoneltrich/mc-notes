@@ -9,7 +9,8 @@ export class AuthService {
       return token;
     } catch (error) {
       console.error('Failed to get access token:', error);
-      return null;
+      // Propagate the error so the store can capture and show it
+      throw error;
     }
   }
 }
