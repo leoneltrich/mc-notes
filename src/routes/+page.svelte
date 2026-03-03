@@ -31,20 +31,27 @@
 {:else if !authStore.isAuthenticated}
   <div class="auth-error">
     <div class="card">
-      {#if authStore.isExpired}
-        <h2>Session Expired</h2>
-        <p>Your session has expired. Please log in again to the main application to continue.</p>
-      {:else if authStore.errorMessage}
-        <h2>Authentication Issue</h2>
-        <div class="error-detail">
-          <p>{authStore.errorMessage}</p>
+      {#if !authStore.isAppRunning}
+        <h2>Main App Required</h2>
+        <p>Please start the <strong>ServeMe Main App</strong> to continue.</p>
+      {:else if !authStore.hasSession || authStore.isExpired}
+        <h2>Authentication Required</h2>
+        <p>Please log in to the <strong>ServeMe Main App</strong> to access your notes.</p>
+      {:else if authStore.technicalError}
+        <h2>Configuration Error</h2>
+        <p>There was a problem accessing your security credentials.</p>
+        <div class="subtle-error">
+          <code>{authStore.technicalError}</code>
         </div>
-        <p class="instruction">Ensure the ServeMe Main App is running and you are logged in.</p>
       {:else}
         <h2>Access Denied</h2>
         <p>Please log in to the main application to access your notes.</p>
       {/if}
-      <div class="polling-hint">Checking for active session...</div>
+      
+      <div class="polling-status">
+        <span class="pulse"></span>
+        Waiting for active session...
+      </div>
     </div>
   </div>
 {:else}
@@ -73,7 +80,7 @@
     width: 32px;
     height: 32px;
     border: 3px solid var(--border-color);
-    border-top-color: var(--accent-primary);
+    border-top-color: var(--text-primary);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
     margin-bottom: 1rem;
@@ -85,11 +92,11 @@
 
   .card {
     background: var(--bg-primary);
-    padding: 2.5rem;
+    padding: 3rem;
     border-radius: 12px;
     box-shadow: var(--shadow-md);
     text-align: center;
-    max-width: 450px;
+    max-width: 400px;
     border: 1px solid var(--border-color);
   }
 
@@ -97,44 +104,55 @@
     margin: 0 0 1rem;
     color: var(--text-primary);
     font-size: 1.5rem;
+    font-weight: 700;
     letter-spacing: -0.02em;
   }
 
   .card p {
-    margin-bottom: 1rem;
+    margin-bottom: 0;
     line-height: 1.6;
-    font-size: 0.9rem;
-  }
-
-  .error-detail {
-    background: var(--bg-tertiary);
-    padding: 1rem;
-    border-radius: 8px;
-    margin-bottom: 1rem;
-    text-align: left;
-    border-left: 3px solid #ef4444;
-  }
-
-  .error-detail p {
-    margin: 0;
-    font-family: monospace;
-    font-size: 0.8rem;
+    font-size: 0.95rem;
     color: var(--text-secondary);
-    word-break: break-word;
   }
 
-  .instruction {
-    font-weight: 500;
-    color: var(--text-primary);
-  }
-
-  .polling-hint {
+  .subtle-error {
     margin-top: 1.5rem;
     font-size: 0.7rem;
     color: var(--text-tertiary);
+    opacity: 0.6;
+    background: var(--bg-tertiary);
+    padding: 0.5rem;
+    border-radius: 4px;
+    word-break: break-all;
+    font-family: monospace;
+  }
+
+  .polling-status {
+    margin-top: 2.5rem;
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .pulse {
+    width: 6px;
+    height: 6px;
+    background-color: var(--text-tertiary);
+    border-radius: 50%;
+    display: inline-block;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0% { transform: scale(0.95); opacity: 0.5; }
+    50% { transform: scale(1.2); opacity: 1; }
+    100% { transform: scale(0.95); opacity: 0.5; }
   }
 
   .app-container {

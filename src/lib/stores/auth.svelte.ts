@@ -5,7 +5,12 @@ class AuthStore {
   accessToken = $state<string | null>(null);
   isLoading = $state(true);
   isExpired = $state(false);
-  errorMessage = $state<string | null>(null);
+  
+  // Categorized error state
+  isAppRunning = $state(true); // Default true, let poll verify
+  hasSession = $state(true);   // Default true, let poll verify
+  technicalError = $state<string | null>(null);
+  
   isAuthenticated = $derived(!!this.accessToken && !this.isExpired);
   
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -20,14 +25,13 @@ class AuthStore {
   async loadToken() {
     try {
       const token = await AuthService.getAccessToken();
-      this.errorMessage = null; // Clear error if successful
+      this.clearErrors();
 
       if (token) {
         const exp = getJwtExpiration(token);
         const isNowExpired = exp ? (exp * 1000) <= Date.now() : true;
 
         if (isNowExpired) {
-          console.warn('Token found but it is already expired.');
           this.accessToken = null;
           this.isExpired = true;
           this.startPolling();
@@ -42,10 +46,36 @@ class AuthStore {
         this.startPolling();
       }
     } catch (err: any) {
-      this.accessToken = null;
-      this.errorMessage = err.toString();
+      this.handleAuthError(err.toString());
       this.startPolling();
     }
+  }
+
+  private handleAuthError(error: string) {
+    this.accessToken = null;
+    
+    if (error.includes('CONNECTION_REFUSED')) {
+      this.isAppRunning = false;
+      this.hasSession = true; // irrelevant if not running
+      this.technicalError = null;
+    } else if (error.includes('NO_SESSION')) {
+      this.isAppRunning = true;
+      this.hasSession = false;
+      this.technicalError = null;
+    } else {
+      // Something else (keychain issue, decryption issue, parse error)
+      this.technicalError = error;
+      // We don't know for sure if it's running or not in other cases, 
+      // but usually if we get a decryption error, the app IS running.
+      this.isAppRunning = true; 
+    }
+  }
+
+  private clearErrors() {
+    this.isAppRunning = true;
+    this.hasSession = true;
+    this.isExpired = false;
+    this.technicalError = null;
   }
 
   private startPolling() {
@@ -60,9 +90,7 @@ class AuthStore {
           const isNowExpired = exp ? (exp * 1000) <= Date.now() : true;
           
           if (!isNowExpired) {
-            console.log('Valid token found during polling!');
-            this.isExpired = false;
-            this.errorMessage = null;
+            this.clearErrors();
             this.setToken(token);
             this.stopPolling();
           } else {
@@ -70,11 +98,9 @@ class AuthStore {
           }
         } else {
           // If no token, maybe clear error message if it was a connection issue that is now resolved but still no session
-          // Or just leave the last error. 
-          // Let's keep it simple for now.
         }
       } catch (err: any) {
-        this.errorMessage = err.toString();
+        this.handleAuthError(err.toString());
       }
     }, 5000);
   }
@@ -104,10 +130,7 @@ class AuthStore {
     const expiresInMs = (exp * 1000) - Date.now();
     const refreshDelay = Math.max(0, expiresInMs - 20000);
 
-    console.log(`Token expires in ${Math.round(expiresInMs / 1000)}s. Refreshing in ${Math.round(refreshDelay / 1000)}s`);
-
     this.refreshTimer = setTimeout(() => {
-      console.log('Refreshing token from keychain...');
       this.loadToken();
     }, refreshDelay);
   }
