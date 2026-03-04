@@ -1,17 +1,20 @@
 <script lang="ts">
   import { notesStore } from '$lib/stores/notes.svelte';
+  import { authStore } from '$lib/stores/auth.svelte';
   import { NotesService } from '$lib/services/notes.service';
 
   let note = $derived(notesStore.selectedNote);
+  let isOwner = $derived(note?.owner_id === authStore.userId);
+  let canEdit = $derived(isOwner || note?.is_public_write);
 
   function handleInput(type: 'title' | 'content', event: Event) {
-    if (!note) return;
+    if (!note || !canEdit) return;
     const value = (event.target as HTMLInputElement | HTMLTextAreaElement).value;
     NotesService.updateNote(note.note_id, { [type]: value });
   }
 
   function handleToggle(field: 'is_public_read' | 'is_public_write') {
-    if (!note) return;
+    if (!note || !isOwner) return; 
     NotesService.updateNote(note.note_id, { [field]: !note[field] });
   }
 
@@ -26,7 +29,7 @@
   }
 </script>
 
-<div class="editor-container">
+<div class="editor-container" class:readonly={!canEdit}>
   {#if note}
     <header class="editor-header">
       <div class="header-content">
@@ -34,6 +37,7 @@
           class="title-input" 
           value={note.title} 
           placeholder="Untitled Note" 
+          readonly={!canEdit}
           oninput={(e) => handleInput('title', e)} 
         />
         <div class="note-meta">
@@ -44,37 +48,47 @@
               <span>Edited: {formatDate(note.timestamp_modified)}</span>
             {/if}
           </div>
-          <div class="share-options">
-            <button 
-              class="share-toggle" 
-              class:active={note.is_public_read}
-              onclick={() => handleToggle('is_public_read')}
-              title="Public Read">
-              Public Read
-            </button>
-            <button 
-              class="share-toggle" 
-              class:active={note.is_public_write}
-              onclick={() => handleToggle('is_public_write')}
-              title="Public Write">
-              Public Write
-            </button>
-          </div>
+          
+          {#if !isOwner}
+            <div class="readonly-badge">Read Only</div>
+          {/if}
+
+          {#if isOwner}
+            <div class="share-options">
+              <button 
+                class="share-toggle" 
+                class:active={note.is_public_read}
+                onclick={() => handleToggle('is_public_read')}
+                title="Public Read">
+                Public Read
+              </button>
+              <button 
+                class="share-toggle" 
+                class:active={note.is_public_write}
+                onclick={() => handleToggle('is_public_write')}
+                title="Public Write">
+                Public Write
+              </button>
+            </div>
+          {/if}
         </div>
       </div>
       
       <div class="editor-actions">
-        <button class="delete-btn" onclick={() => NotesService.deleteNote(note.note_id)} title="Delete Note">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-        </button>
+        {#if isOwner}
+          <button class="delete-btn" onclick={() => NotesService.deleteNote(note.note_id)} title="Delete Note">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+          </button>
+        {/if}
       </div>
     </header>
 
     <div class="editor-content">
       <textarea 
         class="content-input" 
+        readonly={!canEdit}
         oninput={(e) => handleInput('content', e)}
-        placeholder="Start writing..."
+        placeholder={canEdit ? "Start writing..." : "No content"}
       >{note.content}</textarea>
     </div>
   {:else}
@@ -128,6 +142,10 @@
     letter-spacing: -0.02em;
   }
 
+  .title-input[readonly] {
+    cursor: default;
+  }
+
   .title-input::placeholder {
     color: var(--text-tertiary);
   }
@@ -135,7 +153,7 @@
   .note-meta {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 1rem;
   }
 
   .timestamps {
@@ -147,6 +165,19 @@
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+
+  .readonly-badge {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    padding: 0.25rem 0.6rem;
+    background: var(--bg-secondary);
+    color: var(--text-tertiary);
+    border-radius: 4px;
+    border: 1px solid var(--divider-color);
+    width: fit-content;
   }
 
   .dot {
@@ -213,6 +244,12 @@
     line-height: 1.6;
     color: var(--text-secondary);
     padding: 0;
+  }
+
+  .content-input[readonly] {
+    cursor: default;
+    font-size: 1rem;
+    color: var(--text-tertiary);
   }
 
   .content-input::placeholder {
