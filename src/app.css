@@ -1,7 +1,6 @@
 :root {
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Inter', "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   
-  /* Color Palette - Minimal Grayscale */
   --bg-primary: #ffffff;
   --bg-secondary: #f9f9f9;
   --bg-tertiary: #f0f0f0;
@@ -20,7 +19,7 @@
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
 
-  font-family: var(--font-sans);
+  font-family: var(--font-sans), sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
@@ -66,6 +65,11 @@ body {
   overflow: hidden;
   background-color: var(--bg-primary);
   color: var(--text-primary);
+  user-select: none;
+}
+
+input, textarea, [contenteditable="true"] {
+  user-select: text;
 }
 
 button {
@@ -75,16 +79,24 @@ button {
   border: none;
   background: none;
   outline: none;
+  color: inherit;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
 }
 
 input, textarea {
   font-family: inherit;
   color: inherit;
+  background: transparent;
+  border: none;
 }
 
-/* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 4px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -94,6 +106,7 @@ input, textarea {
 ::-webkit-scrollbar-thumb {
   background: var(--border-color);
   border-radius: 10px;
+  border: 2px solid var(--bg-primary);
 }
 
 ::-webkit-scrollbar-thumb:hover {
