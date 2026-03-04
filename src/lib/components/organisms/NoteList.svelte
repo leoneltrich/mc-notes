@@ -1,5 +1,6 @@
 <script lang="ts">
   import { notesStore } from '$lib/stores/notes.svelte';
+  import { authStore } from '$lib/stores/auth.svelte';
   import { NotesService } from '$lib/services/notes.service';
 
   function handleSelect(id: number) {
@@ -18,6 +19,11 @@
     if (Math.abs(diff) < 3600) return rtf.format(Math.floor(diff / 60), 'minute');
     if (Math.abs(diff) < 86400) return rtf.format(Math.floor(diff / 3600), 'hour');
     return new Date(timestamp * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  function getShortOwnerId(ownerId: string) {
+    if (ownerId === authStore.userId) return 'You';
+    return ownerId.length > 8 ? ownerId.slice(0, 4) + '...' + ownerId.slice(-4) : ownerId;
   }
 </script>
 
@@ -58,21 +64,27 @@
               class="note-item" 
               class:selected={notesStore.selectedNoteId === note.note_id}
               onclick={() => handleSelect(note.note_id)}>
-              <div class="note-header">
+              <span class="note-header">
                 <span class="title">
                   {note.title || 'Untitled Note'}
-                  <div class="status-indicators">
+                  <span class="status-indicators">
                     {#if note.is_public_read}
                       <span class="status-dot" title="Public (Read-only)">R</span>
                     {/if}
                     {#if note.is_public_write}
                       <span class="status-dot write" title="Public (Writable)">W</span>
                     {/if}
-                  </div>
+                  </span>
                 </span>
                 <span class="time">{formatRelativeTime(note.timestamp_modified || note.timestamp_created)}</span>
-              </div>
-              <p class="preview">{note.content || 'No content'}</p>
+              </span>
+              <span class="preview">{note.content || 'No content'}</span>
+              
+              {#if notesStore.filterMode === 'public'}
+                <span class="owner-badge" class:is-me={note.owner_id === authStore.userId}>
+                  {getShortOwnerId(note.owner_id)}
+                </span>
+              {/if}
             </button>
           </li>
         {/each}
@@ -185,6 +197,9 @@
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
+    position: relative;
+    border: none;
+    background: transparent;
   }
 
   .note-item:hover {
@@ -257,6 +272,28 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
     line-height: 1.4;
+    padding-bottom: 0.5rem; /* Space for the badge */
+  }
+
+  .owner-badge {
+    position: absolute;
+    bottom: 0.6rem;
+    right: 0.6rem;
+    font-size: 0.6rem;
+    color: var(--text-tertiary);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.15rem 0.4rem;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    opacity: 0.8;
+  }
+
+  .owner-badge.is-me {
+    background: var(--text-primary);
+    color: var(--bg-primary);
+    opacity: 1;
   }
 
   .empty-state {

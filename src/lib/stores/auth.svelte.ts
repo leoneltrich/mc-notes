@@ -1,5 +1,5 @@
 import { AuthService } from '$lib/services/auth.service';
-import { getJwtExpiration } from '$lib/utils/jwt';
+import { getJwtExpiration, getUserIdFromToken } from '$lib/utils/jwt';
 
 class AuthStore {
   accessToken = $state<string | null>(null);
@@ -7,11 +7,12 @@ class AuthStore {
   isExpired = $state(false);
   
   // Categorized error state
-  isAppRunning = $state(true); // Default true, let poll verify
-  hasSession = $state(true);   // Default true, let poll verify
+  isAppRunning = $state(true); 
+  hasSession = $state(true);   
   technicalError = $state<string | null>(null);
   
   isAuthenticated = $derived(!!this.accessToken && !this.isExpired);
+  userId = $derived(this.accessToken ? getUserIdFromToken(this.accessToken) : null);
   
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -56,17 +57,14 @@ class AuthStore {
     
     if (error.includes('CONNECTION_REFUSED')) {
       this.isAppRunning = false;
-      this.hasSession = true; // irrelevant if not running
+      this.hasSession = true; 
       this.technicalError = null;
     } else if (error.includes('NO_SESSION')) {
       this.isAppRunning = true;
       this.hasSession = false;
       this.technicalError = null;
     } else {
-      // Something else (keychain issue, decryption issue, parse error)
       this.technicalError = error;
-      // We don't know for sure if it's running or not in other cases, 
-      // but usually if we get a decryption error, the app IS running.
       this.isAppRunning = true; 
     }
   }
@@ -96,8 +94,6 @@ class AuthStore {
           } else {
             this.isExpired = true;
           }
-        } else {
-          // If no token, maybe clear error message if it was a connection issue that is now resolved but still no session
         }
       } catch (err: any) {
         this.handleAuthError(err.toString());
