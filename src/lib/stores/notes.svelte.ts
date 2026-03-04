@@ -1,4 +1,5 @@
 import type { Note } from '$lib/types/api';
+import { authStore } from './auth.svelte';
 
 class NotesStore {
   notes = $state<Note[]>([]);
@@ -6,12 +7,11 @@ class NotesStore {
   filterMode = $state<'mine' | 'public'>('mine');
   isLoading = $state(false);
   
-  // Sort notes by timestamp_modified (descending) so most recent is at the top
   filteredNotes = $derived(
     this.notes
       .filter(n => {
         if (this.filterMode === 'mine') {
-          return true; 
+          return n.owner_id === authStore.userId;
         }
         return n.is_public_read || n.is_public_write;
       })
