@@ -30,9 +30,22 @@ export async function apiClient<T>(endpoint: string, options: FetchOptions = {})
     if (response.status === 401) {
       console.error('Unauthorized request');
     }
-    const errorBody = await response.json().catch(() => ({ message: 'Unknown error' }));
+    const errorBody = await response.json().catch(() => ({ message: `HTTP ${response.status}` }));
     throw new Error(errorBody.message || `HTTP ${response.status}`);
   }
 
-  return response.json();
+  if (response.status === 204) {
+    return {} as T;
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return {} as T;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return {} as T;
+  }
 }

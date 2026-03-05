@@ -98,7 +98,7 @@
       </div>
       <h2>Select a note</h2>
       <p>Choose from the sidebar or create a new one.</p>
-      <button class="primary-btn" onclick={() => NotesService.createNote()}>
+      <button class="primary-btn" onclick={() => NotesService.createNote(notesStore.filterMode === 'public')}>
         New Note
       </button>
     </div>

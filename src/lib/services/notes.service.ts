@@ -61,14 +61,14 @@ export class NotesService {
     notesStore.selectNote(id);
   }
 
-  static async createNote() {
+  static async createNote(isPublic = false) {
     if (!authStore.isAuthenticated) return;
 
     try {
       await NotesApi.create({
-        title: 'New Note',
+        title: isPublic ? 'New Public Note' : 'New Note',
         content: '',
-        is_public_read: false,
+        is_public_read: isPublic,
         is_public_write: false
       });
       await this.loadNotes();
@@ -79,7 +79,6 @@ export class NotesService {
         );
         await this.selectNote(newestNote.note_id);
       }
-
     } catch (error) {
       console.error('Failed to create note:', error);
     }
@@ -88,7 +87,6 @@ export class NotesService {
   static async updateNote(id: number, data: Partial<UpdateNoteRequest>) {
     pendingSaveId = id;
     
-    // Update locally including the timestamp to trigger immediate re-sort to the top
     const now = Math.floor(Date.now() / 1000);
     notesStore.updateNoteInList(id, { ...data, timestamp_modified: now });
 
@@ -101,7 +99,6 @@ export class NotesService {
           return;
         }
 
-        console.log('Saving note...', id);
         await NotesApi.update({
           id,
           content: currentNote.content,
@@ -109,7 +106,6 @@ export class NotesService {
           is_public_read: currentNote.is_public_read,
           is_public_write: currentNote.is_public_write
         });
-        console.log('Note saved.');
         
         if (pendingSaveId === id) {
           pendingSaveId = null;
@@ -128,9 +124,7 @@ export class NotesService {
     notesStore.removeNoteFromList(id);
 
     try {
-      console.log('Deleting note...', id);
       await NotesApi.delete(id);
-      console.log('Note deleted.');
     } catch (error) {
       console.error('Failed to delete note:', error);
       await this.loadNotes();

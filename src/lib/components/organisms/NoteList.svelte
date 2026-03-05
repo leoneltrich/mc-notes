@@ -8,7 +8,8 @@
   }
 
   function handleCreate() {
-    NotesService.createNote();
+    const isPublic = notesStore.filterMode === 'public';
+    NotesService.createNote(isPublic);
   }
 
   function formatRelativeTime(timestamp: number) {
