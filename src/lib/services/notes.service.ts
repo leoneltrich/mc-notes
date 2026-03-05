@@ -3,9 +3,9 @@ import { notesStore } from '$lib/stores/notes.svelte';
 import { authStore } from '$lib/stores/auth.svelte';
 import type { UpdateNoteRequest } from '$lib/types/api';
 
-let saveTimeout: ReturnType<typeof setTimeout>;
-let pollInterval: ReturnType<typeof setInterval>;
-let pendingSaveId: number | null = null;
+const saveTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
+let pollInterval: ReturnType<typeof setInterval> | null = null;
+let pendingSaveIds = new Set<number>();
 
 export class NotesService {
   static async loadNotes(silent = false) {
@@ -16,10 +16,10 @@ export class NotesService {
       const response = await NotesApi.getAll();
       const serverNotes = response.data;
 
-      if (pendingSaveId !== null) {
+      if (pendingSaveIds.size > 0) {
         const currentLocalNotes = notesStore.notes;
         const mergedNotes = serverNotes.map(sn => {
-          if (sn.note_id === pendingSaveId) {
+          if (pendingSaveIds.has(sn.note_id)) {
             const localNote = currentLocalNotes.find(ln => ln.note_id === sn.note_id);
             if (localNote) {
               return { 
@@ -37,23 +37,29 @@ export class NotesService {
       } else {
         notesStore.setNotes(serverNotes);
       }
-    } catch (error) {
-      console.error('Failed to load notes:', error);
+    } catch (error: any) {
+      if (error.message === 'RATE_LIMIT_EXCEEDED') {
+        console.warn('Rate limit hit during poll. Backing off...');
+      } else {
+        console.error('Failed to load notes:', error);
+      }
     } finally {
       if (!silent) notesStore.setLoading(false);
     }
   }
 
   static startPolling() {
-    this.stopPolling();
+    if (pollInterval) return;
+    this.loadNotes(true);
     pollInterval = setInterval(() => {
       this.loadNotes(true);
-    }, 5000);
+    }, 10000); // 10s poll to be conservative
   }
 
   static stopPolling() {
     if (pollInterval) {
       clearInterval(pollInterval);
+      pollInterval = null;
     }
   }
 
@@ -85,17 +91,19 @@ export class NotesService {
   }
 
   static async updateNote(id: number, data: Partial<UpdateNoteRequest>) {
-    pendingSaveId = id;
+    pendingSaveIds.add(id);
     
     const now = Math.floor(Date.now() / 1000);
     notesStore.updateNoteInList(id, { ...data, timestamp_modified: now });
 
-    clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(async () => {
+    const existingTimeout = saveTimeouts.get(id);
+    if (existingTimeout) clearTimeout(existingTimeout);
+
+    const timeout = setTimeout(async () => {
       try {
         const currentNote = notesStore.notes.find(n => n.note_id === id);
         if (!currentNote) {
-          pendingSaveId = null;
+          pendingSaveIds.delete(id);
           return;
         }
 
@@ -107,15 +115,20 @@ export class NotesService {
           is_public_write: currentNote.is_public_write
         });
         
-        if (pendingSaveId === id) {
-          pendingSaveId = null;
+        pendingSaveIds.delete(id);
+      } catch (error: any) {
+        if (error.message === 'RATE_LIMIT_EXCEEDED') {
+          console.warn('Rate limit hit during save. Retrying later...');
+          // Don't clear pending status, keep local version
+        } else {
+          console.error('Failed to update note:', error);
+          pendingSaveIds.delete(id);
+          await this.loadNotes();
         }
-      } catch (error) {
-        console.error('Failed to update note:', error);
-        pendingSaveId = null;
-        await this.loadNotes();
       }
-    }, 500);
+    }, 1000); // 1s debounce
+    
+    saveTimeouts.set(id, timeout);
   }
 
   static async deleteNote(id: number) {
@@ -125,9 +138,11 @@ export class NotesService {
 
     try {
       await NotesApi.delete(id);
-    } catch (error) {
-      console.error('Failed to delete note:', error);
-      await this.loadNotes();
+    } catch (error: any) {
+      if (error.message !== 'RATE_LIMIT_EXCEEDED') {
+        console.error('Failed to delete note:', error);
+        await this.loadNotes();
+      }
     }
   }
 }

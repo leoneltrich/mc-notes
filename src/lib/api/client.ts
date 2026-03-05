@@ -19,7 +19,10 @@ export async function apiClient<T>(endpoint: string, options: FetchOptions = {})
   if (authStore.accessToken) {
     headers.set('Authorization', `Bearer ${authStore.accessToken}`);
   }
-  headers.set('Content-Type', 'application/json');
+  
+  if (init.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
 
   const response = await fetch(url.toString(), {
     ...init,
@@ -27,21 +30,22 @@ export async function apiClient<T>(endpoint: string, options: FetchOptions = {})
   });
 
   if (!response.ok) {
-    if (response.status === 401) {
-      console.error('Unauthorized request');
+    if (response.status === 429) {
+      throw new Error('RATE_LIMIT_EXCEEDED');
     }
-    const errorBody = await response.json().catch(() => ({ message: `HTTP ${response.status}` }));
-    throw new Error(errorBody.message || `HTTP ${response.status}`);
+    
+    let errorMessage = `HTTP ${response.status}`;
+    try {
+      const errorBody = await response.json();
+      errorMessage = errorBody.message || errorBody.error || errorMessage;
+    } catch (e) { }
+    throw new Error(errorMessage);
   }
 
-  if (response.status === 204) {
-    return {} as T;
-  }
+  if (response.status === 204) return {} as T;
 
   const text = await response.text();
-  if (!text) {
-    return {} as T;
-  }
+  if (!text) return {} as T;
 
   try {
     return JSON.parse(text);
