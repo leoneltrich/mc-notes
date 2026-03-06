@@ -1,8 +1,6 @@
 import { authStore } from '$lib/stores/auth.svelte';
 import { fetch } from '@tauri-apps/plugin-http';
 
-const BASE_URL = 'http://localhost/api/v1';
-
 type FetchOptions = RequestInit & {
   params?: Record<string, string>;
 };
@@ -10,7 +8,13 @@ type FetchOptions = RequestInit & {
 export async function apiClient<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
   const { params, ...init } = options;
   
-  const url = new URL(`${BASE_URL}${endpoint}`);
+  let baseUrl = authStore.serverUrl || 'http://localhost';
+  
+  if (!baseUrl.endsWith('/api/v1') && !baseUrl.endsWith('/api/v1/')) {
+    baseUrl = baseUrl.replace(/\/$/, '') + '/api/v1';
+  }
+
+  const url = new URL(`${baseUrl}${endpoint}`);
   if (params) {
     Object.entries(params).forEach(([key, value]) => url.searchParams.append(key, value));
   }

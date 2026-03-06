@@ -1,12 +1,13 @@
 import { AuthService } from '$lib/services/auth.service';
+import { ConfigService } from '$lib/services/config.service';
 import { getJwtExpiration, getUserIdFromToken } from '$lib/utils/jwt';
 
 class AuthStore {
   accessToken = $state<string | null>(null);
+  serverUrl = $state<string | null>(null);
   isLoading = $state(true);
   isExpired = $state(false);
   
-  // Categorized error state
   isAppRunning = $state(true); 
   hasSession = $state(true);   
   technicalError = $state<string | null>(null);
@@ -19,6 +20,9 @@ class AuthStore {
 
   async init() {
     this.isLoading = true;
+    try {
+      this.serverUrl = await ConfigService.getServerUrl();
+    } catch (err: any) { }
     await this.loadToken();
     this.isLoading = false;
   }
@@ -79,9 +83,14 @@ class AuthStore {
   private startPolling() {
     if (this.pollTimer) return;
     
-    console.log('Starting auth polling...');
     this.pollTimer = setInterval(async () => {
       try {
+        if (!this.serverUrl) {
+          try {
+            this.serverUrl = await ConfigService.getServerUrl();
+          } catch (e) { }
+        }
+
         const token = await AuthService.getAccessToken();
         if (token) {
           const exp = getJwtExpiration(token);
@@ -105,7 +114,6 @@ class AuthStore {
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
-      console.log('Auth polling stopped.');
     }
   }
 
