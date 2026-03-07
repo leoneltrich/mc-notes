@@ -10,8 +10,8 @@ let requestIdCounter = 0;
 // Global Backoff State
 let currentRetryDelay = 0;
 let lastRateLimitTime = 0;
-const INITIAL_RETRY_DELAY = 5000; 
-const MAX_RETRY_DELAY = 60000;    
+const INITIAL_RETRY_DELAY = 5000;
+const MAX_RETRY_DELAY = 60000;
 
 export function isBackingOff() {
   if (currentRetryDelay === 0) return false;
@@ -41,37 +41,58 @@ export function resetBackoff() {
 class GlobalThrottler {
   private activeRequest: Promise<any> | null = null;
   private lastRequestFinishTime = 0;
-  private MIN_GAP_MS = 800; // Slightly faster but still safe
+  private MIN_GAP_MS = 1000;
 
-  async waitAndExecute<T>(fn: () => Promise<T>): Promise<T> {
+  async waitAndExecute<T>(fn: (attempt: number) => Promise<T>): Promise<T> {
     while (this.activeRequest) {
       await this.activeRequest;
-    }
-
-    while (isBackingOff()) {
-      const waitTime = currentRetryDelay - (Date.now() - lastRateLimitTime);
-      if (waitTime > 0) {
-        await new Promise(r => setTimeout(r, waitTime));
-      } else {
-        break;
-      }
-    }
-
-    const now = Date.now();
-    const timeSinceLast = now - this.lastRequestFinishTime;
-    if (timeSinceLast < this.MIN_GAP_MS) {
-      await new Promise(r => setTimeout(r, this.MIN_GAP_MS - timeSinceLast));
     }
 
     let resolveActive: (value: any) => void;
     this.activeRequest = new Promise(resolve => { resolveActive = resolve; });
 
     try {
-      const result = await fn();
-      resetBackoff();
-      return result;
+      let attempt = 0;
+      const maxAttempts = 10;
+
+      while (attempt < maxAttempts) {
+        // Enforce backoff if active
+        while (isBackingOff()) {
+          const waitTime = currentRetryDelay - (Date.now() - lastRateLimitTime);
+          if (waitTime > 0) {
+            console.log(`[API] Waiting ${waitTime}ms for backoff (Attempt ${attempt + 1})...`);
+            await new Promise(r => setTimeout(r, waitTime));
+          } else {
+            break;
+          }
+        }
+
+        // Enforce gap between requests
+        const now = Date.now();
+        const timeSinceLast = now - this.lastRequestFinishTime;
+        if (timeSinceLast < this.MIN_GAP_MS) {
+          await new Promise(r => setTimeout(r, this.MIN_GAP_MS - timeSinceLast));
+        }
+
+        try {
+          const result = await fn(attempt);
+          resetBackoff();
+          this.lastRequestFinishTime = Date.now();
+          return result;
+        } catch (err: any) {
+          this.lastRequestFinishTime = Date.now();
+          if (err.message === 'RATE_LIMIT_EXCEEDED') {
+            attempt++;
+            if (attempt < maxAttempts) {
+              console.log(`[API] Rate limit hit. Retrying in-place (Attempt ${attempt}/${maxAttempts})...`);
+              continue;
+            }
+          }
+          throw err;
+        }
+      }
+      throw new Error('MAX_RETRIES_EXCEEDED');
     } finally {
-      this.lastRequestFinishTime = Date.now();
       this.activeRequest = null;
       resolveActive!(null);
     }
@@ -83,10 +104,10 @@ const throttler = new GlobalThrottler();
 export async function apiClient<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
   const reqId = ++requestIdCounter;
   const method = options.method || 'GET';
-  const timestamp = new Date().toLocaleTimeString();
-
-  return throttler.waitAndExecute(async () => {
-    console.log(`[API][${reqId}][${timestamp}] ${method} ${endpoint} - Sending...`);
+  
+  return throttler.waitAndExecute(async (attempt) => {
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(`[API][${reqId}][Attempt ${attempt + 1}][${timestamp}] ${method} ${endpoint}`);
     
     const { params, ...init } = options;
     let baseUrl = authStore.serverUrl || 'http://localhost';
@@ -117,7 +138,6 @@ export async function apiClient<T>(endpoint: string, options: FetchOptions = {})
 
       if (!response.ok) {
         if (response.status === 429) {
-          console.error(`[API][${reqId}] 429 Rate Limit on ${endpoint}`);
           handleRateLimit();
           throw new Error('RATE_LIMIT_EXCEEDED');
         }
@@ -130,8 +150,6 @@ export async function apiClient<T>(endpoint: string, options: FetchOptions = {})
         throw new Error(errorMessage);
       }
 
-      console.log(`[API][${reqId}] ${method} ${endpoint} - Success`);
-
       if (response.status === 204) return {} as T;
       const text = await response.text();
       if (!text) return {} as T;
@@ -142,9 +160,6 @@ export async function apiClient<T>(endpoint: string, options: FetchOptions = {})
         return {} as T;
       }
     } catch (err: any) {
-      if (err.message !== 'RATE_LIMIT_EXCEEDED') {
-        console.error(`[API][${reqId}] ${method} ${endpoint} - Error: ${err.message}`);
-      }
       throw err;
     }
   });

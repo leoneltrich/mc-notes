@@ -304,8 +304,9 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    line-height: 1.4;
-    padding-bottom: 0.5rem; /* Space for the badge */
+    line-height: 1.25rem;
+    max-height: 2.5rem; /* 2 lines * 1.25rem */
+    word-break: break-all;
   }
 
   .owner-badge {

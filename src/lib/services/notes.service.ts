@@ -33,19 +33,11 @@ export class NotesService {
     }, POLL_INTERVAL);
   }
 
-  /**
-   * @param silent If true, don't show the global loading spinner
-   * @param force If true, bypass the "isLoaded" check (used after sync ops)
-   */
   static async loadNotes(silent = false, force = false) {
     if (!authStore.isAuthenticated) return;
-    // For background polls, skip if backing off.
     if (silent && !force && isBackingOff()) return;
 
-    // If we're already loading, return that promise
     if (activeLoadPromise) return activeLoadPromise;
-    
-    // If not a background poll/forced refresh and already loaded, skip
     if (!silent && !force && notesStore.isLoaded) return;
 
     activeLoadPromise = (async () => {
@@ -60,7 +52,6 @@ export class NotesService {
         
         const mergedNotes = serverNotes.map(sn => {
           const localNote = currentNotes.find(ln => ln.note_id === sn.note_id);
-          // If we have local pending changes for this server note, prioritize them
           if (localNote && (pendingIds.has(sn.note_id) || notesStore.pendingSyncIds.has(sn.note_id))) {
             return { ...sn, ...localNote };
           }
@@ -201,90 +192,98 @@ export class NotesService {
       while (syncQueue.length > 0 && rotations < syncQueue.length) {
         const op = syncQueue[0];
 
-        // 1. GREEDY CREATE: Send POST as fast as possible
-        if (op.type === 'CREATE' && op.status === 'PENDING') {
-          await NotesApi.create(op.data);
-          op.status = 'CREATED';
-          rotations = 0;
-          
-          const nextOp = syncQueue[1];
-          if (nextOp && nextOp.type === 'CREATE' && nextOp.status === 'PENDING') {
-            syncQueue.push(syncQueue.shift()!);
-            continue;
-          }
-        }
-
-        // 2. BATCH RESOLUTION
-        if (op.type === 'CREATE' && op.status === 'CREATED') {
-          const existingIds = new Set(notesStore.notes.map(n => n.note_id).filter(id => id > 0));
-          await this.loadNotes(true, true); // Force a reload to find IDs
-          
-          let resolvedCount = 0;
-          for (let i = syncQueue.length - 1; i >= 0; i--) {
-            const currentOp = syncQueue[i];
-            if (currentOp.type === 'CREATE' && currentOp.status === 'CREATED') {
-              const newestNote = notesStore.notes.find(n => n.note_id > 0 && !existingIds.has(n.note_id));
-              if (newestNote) {
-                notesStore.replaceNoteId(currentOp.id, newestNote.note_id);
-                syncQueue.splice(i, 1);
-                existingIds.add(newestNote.note_id);
-                resolvedCount++;
-              }
-            }
-          }
-
-          if (resolvedCount > 0) {
-            notesStore.isCreating = false;
+        try {
+          // 1. GREEDY CREATE
+          if (op.type === 'CREATE' && op.status === 'PENDING') {
+            await NotesApi.create(op.data);
+            op.status = 'CREATED';
             rotations = 0;
-            continue;
-          } else {
-            syncQueue.push(syncQueue.shift()!);
-            rotations++;
-            continue;
-          }
-        }
-
-        // 3. NORMAL OPERATIONS (UPDATE/DELETE)
-        if (op.type === 'UPDATE') {
-          if (op.id < 0) {
-            const hasCreate = syncQueue.some(o => o.id === op.id && o.type === 'CREATE');
-            if (!hasCreate) {
-              syncQueue.shift();
-              notesStore.setSyncing(op.id, false);
-              rotations = 0;
+            
+            const nextOp = syncQueue[1];
+            if (nextOp && nextOp.type === 'CREATE' && nextOp.status === 'PENDING') {
+              syncQueue.push(syncQueue.shift()!);
               continue;
             }
-            syncQueue.push(syncQueue.shift()!);
-            rotations++;
+          }
+
+          // 2. BATCH RESOLUTION
+          if (op.type === 'CREATE' && op.status === 'CREATED') {
+            const existingIds = new Set(notesStore.notes.map(n => n.note_id).filter(id => id > 0));
+            await this.loadNotes(true, true); 
+            
+            let resolvedCount = 0;
+            for (let i = syncQueue.length - 1; i >= 0; i--) {
+              const currentOp = syncQueue[i];
+              if (currentOp.type === 'CREATE' && currentOp.status === 'CREATED') {
+                const newestNote = notesStore.notes.find(n => n.note_id > 0 && !existingIds.has(n.note_id));
+                if (newestNote) {
+                  notesStore.replaceNoteId(currentOp.id, newestNote.note_id);
+                  syncQueue.splice(i, 1);
+                  existingIds.add(newestNote.note_id);
+                  resolvedCount++;
+                }
+              }
+            }
+
+            if (resolvedCount > 0) {
+              notesStore.isCreating = false;
+              rotations = 0;
+              continue;
+            } else {
+              syncQueue.push(syncQueue.shift()!);
+              rotations++;
+              continue;
+            }
+          }
+
+          // 3. NORMAL OPERATIONS
+          if (op.type === 'UPDATE') {
+            if (op.id < 0) {
+              const hasCreate = syncQueue.some(o => o.id === op.id && o.type === 'CREATE');
+              if (!hasCreate) {
+                syncQueue.shift();
+                notesStore.setSyncing(op.id, false);
+                rotations = 0;
+                continue;
+              }
+              syncQueue.push(syncQueue.shift()!);
+              rotations++;
+              continue; 
+            }
+            await NotesApi.update({ id: op.id, ...op.data });
+            notesStore.setSyncing(op.id, false);
+            syncQueue.shift();
+            rotations = 0;
+          } else if (op.type === 'DELETE') {
+            if (op.id > 0) {
+              await NotesApi.delete(op.id);
+            }
+            syncQueue.shift();
+            rotations = 0;
+          }
+        } catch (error: any) {
+          if (error.message === 'RATE_LIMIT_EXCEEDED' || error.message === 'RETRY_LOAD_FOR_ID') {
+            //ApiClient handled the wait, we just continue to let it retry next loop turn
+            rotations = 0; // Reset rotations so we don't accidentally exit while retrying
             continue; 
+          } else {
+            console.error(`[Sync] Permanent failure for ${op.type}:`, error);
+            const failedOp = syncQueue.shift();
+            if (failedOp?.type === 'UPDATE') notesStore.setSyncing(failedOp.id, false);
+            if (failedOp?.type === 'CREATE') notesStore.isCreating = false;
+            rotations = 0;
           }
-          await NotesApi.update({ id: op.id, ...op.data });
-          notesStore.setSyncing(op.id, false);
-          syncQueue.shift();
-          rotations = 0;
-          // IMPORTANT: Trigger a silent but forced reload to clear the spinner from local state
-          this.loadNotes(true, true).catch(() => {});
-        } else if (op.type === 'DELETE') {
-          if (op.id > 0) {
-            await NotesApi.delete(op.id);
-          }
-          syncQueue.shift();
-          rotations = 0;
-          // Refresh after delete
-          this.loadNotes(true, true).catch(() => {});
         }
-      }
-    } catch (error: any) {
-      if (error.message === 'RATE_LIMIT_EXCEEDED' || error.message === 'RETRY_LOAD_FOR_ID') {
-        // apiClient handled the delay
-      } else {
-        console.error(`[Sync] Permanent failure:`, error);
-        const op = syncQueue.shift();
-        if (op?.type === 'UPDATE') notesStore.setSyncing(op.id, false);
-        notesStore.isCreating = false;
       }
     } finally {
       isProcessingQueue = false;
+      // If queue is still not empty (e.g. rotations hit limit), schedule a resume
+      if (syncQueue.length > 0) {
+        setTimeout(() => this.processQueue(), 2000);
+      } else {
+        // Queue is empty, final refresh to ensure consistency
+        this.loadNotes(true, true).catch(() => {});
+      }
     }
   }
 }
