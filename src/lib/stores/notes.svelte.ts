@@ -6,6 +6,9 @@ class NotesStore {
   selectedNoteId = $state<number | null>(null);
   filterMode = $state<'mine' | 'public'>('mine');
   isLoading = $state(false);
+  isLoaded = $state(false);
+  isCreating = $state(false);
+  pendingSyncIds = $state(new Set<number>());
   
   filteredNotes = $derived(
     this.notes
@@ -45,10 +48,47 @@ class NotesStore {
     }
   }
 
+  replaceNoteId(oldId: number, newId: number) {
+    const oldIndex = this.notes.findIndex(n => n.note_id === oldId);
+    const newIndex = this.notes.findIndex(n => n.note_id === newId);
+
+    if (oldIndex === -1) return; // Already replaced or deleted.
+
+    if (newIndex !== -1 && oldIndex !== newIndex) {
+      // Both exist and are different objects. The server note (newIndex) was likely just loaded.
+      // We merge any local content from the temp note just in case, then remove temp.
+      const tempNote = this.notes[oldIndex];
+      this.notes[newIndex].content = tempNote.content;
+      this.notes[newIndex].title = tempNote.title;
+      this.notes.splice(oldIndex, 1);
+    } else {
+      // Only temp exists, or newIndex is already the same object as oldIndex.
+      this.notes[oldIndex].note_id = newId;
+    }
+
+    if (this.selectedNoteId === oldId) {
+      this.selectedNoteId = newId;
+    }
+    
+    if (this.pendingSyncIds.has(oldId)) {
+      this.pendingSyncIds.delete(oldId);
+      this.pendingSyncIds.add(newId);
+    }
+  }
+
   removeNoteFromList(id: number) {
     this.notes = this.notes.filter(n => n.note_id !== id);
     if (this.selectedNoteId === id) {
       this.selectedNoteId = null;
+    }
+    this.pendingSyncIds.delete(id);
+  }
+
+  setSyncing(id: number, syncing: boolean) {
+    if (syncing) {
+      this.pendingSyncIds.add(id);
+    } else {
+      this.pendingSyncIds.delete(id);
     }
   }
 }

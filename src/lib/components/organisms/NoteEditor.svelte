@@ -50,7 +50,11 @@
           </div>
           
           {#if !isOwner}
-            <div class="readonly-badge">Read Only</div>
+            {#if note.is_public_write}
+              <div class="readonly-badge readwrite">Read & Write</div>
+            {:else}
+              <div class="readonly-badge">Read Only</div>
+            {/if}
           {/if}
 
           {#if isOwner}
@@ -178,6 +182,12 @@
     border-radius: 4px;
     border: 1px solid var(--divider-color);
     width: fit-content;
+  }
+
+  .readonly-badge.readwrite {
+    background: rgba(var(--primary-rgb), 0.1);
+    color: var(--primary-color);
+    border-color: rgba(var(--primary-rgb), 0.2);
   }
 
   .dot {

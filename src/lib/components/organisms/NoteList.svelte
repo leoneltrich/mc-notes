@@ -32,7 +32,11 @@
   <header class="header">
     <div class="top-row">
       <h1>Notes</h1>
-      <button class="create-btn" onclick={handleCreate} aria-label="Create new note">
+      <button 
+        class="create-btn" 
+        onclick={handleCreate} 
+        disabled={notesStore.isCreating}
+        aria-label="Create new note">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
       </button>
     </div>
@@ -69,6 +73,11 @@
                 <span class="title">
                   {note.title || 'Untitled Note'}
                   <span class="status-indicators">
+                    {#if notesStore.pendingSyncIds.has(note.note_id)}
+                      <span class="sync-indicator" title="Syncing...">
+                        <svg class="spin" xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+                      </span>
+                    {/if}
                     {#if note.is_public_read}
                       <span class="status-dot" title="Public (Read-only)">R</span>
                     {/if}
@@ -135,6 +144,12 @@
 
   .create-btn:hover {
     background: var(--accent-secondary);
+  }
+
+  .create-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: var(--text-tertiary);
   }
 
   .filter-tabs {
@@ -235,6 +250,23 @@
     display: flex;
     gap: 2px;
     flex-shrink: 0;
+    align-items: center;
+  }
+
+  .sync-indicator {
+    color: var(--primary-color);
+    margin-right: 2px;
+    display: flex;
+    align-items: center;
+  }
+
+  .spin {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
   .status-dot {
