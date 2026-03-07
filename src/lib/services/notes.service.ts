@@ -21,7 +21,7 @@ let isProcessingQueue = false;
 let pollTimeout: ReturnType<typeof setTimeout> | null = null;
 let tempIdCounter = -1;
 
-const POLL_INTERVAL = 15000;
+const POLL_INTERVAL = 30000;
 const saveTimeouts = new Map<number, ReturnType<typeof setTimeout>>();
 let activeLoadPromise: Promise<void> | null = null;
 
@@ -33,11 +33,20 @@ export class NotesService {
     }, POLL_INTERVAL);
   }
 
-  static async loadNotes(silent = false) {
-    if (!authStore.isAuthenticated || isBackingOff()) return;
-    if (!silent && notesStore.isLoaded) return;
+  /**
+   * @param silent If true, don't show the global loading spinner
+   * @param force If true, bypass the "isLoaded" check (used after sync ops)
+   */
+  static async loadNotes(silent = false, force = false) {
+    if (!authStore.isAuthenticated) return;
+    // For background polls, skip if backing off.
+    if (silent && !force && isBackingOff()) return;
 
+    // If we're already loading, return that promise
     if (activeLoadPromise) return activeLoadPromise;
+    
+    // If not a background poll/forced refresh and already loaded, skip
+    if (!silent && !force && notesStore.isLoaded) return;
 
     activeLoadPromise = (async () => {
       if (!silent) notesStore.setLoading(true);
@@ -51,6 +60,7 @@ export class NotesService {
         
         const mergedNotes = serverNotes.map(sn => {
           const localNote = currentNotes.find(ln => ln.note_id === sn.note_id);
+          // If we have local pending changes for this server note, prioritize them
           if (localNote && (pendingIds.has(sn.note_id) || notesStore.pendingSyncIds.has(sn.note_id))) {
             return { ...sn, ...localNote };
           }
@@ -59,11 +69,9 @@ export class NotesService {
 
         const localOnlyNotes = currentNotes.filter(ln => ln.note_id < 0 && pendingIds.has(ln.note_id));
         notesStore.setNotes([...mergedNotes, ...localOnlyNotes]);
-        
-        // Success: Backoff is reset inside apiClient.ts
       } catch (error: any) {
         if (error.message !== 'RATE_LIMIT_EXCEEDED') {
-           console.error('[Sync] loadNotes failure:', error);
+           console.error('[Sync] loadNotes error:', error);
         }
         throw error;
       } finally {
@@ -150,7 +158,7 @@ export class NotesService {
         retryCount: 0,
         timestamp: Date.now()
       });
-    }, 1500);
+    }, 1000); 
     
     saveTimeouts.set(id, timeout);
   }
@@ -188,79 +196,95 @@ export class NotesService {
     if (isProcessingQueue || syncQueue.length === 0) return;
     isProcessingQueue = true;
 
-    while (syncQueue.length > 0) {
-      // apiClient will internally wait for backoff and enforce 1s gap
-      const op = syncQueue[0];
-      try {
-        if (op.type === 'CREATE') {
-          if (op.status === 'PENDING') {
-            await NotesApi.create(op.data);
-            op.status = 'CREATED';
+    try {
+      let rotations = 0;
+      while (syncQueue.length > 0 && rotations < syncQueue.length) {
+        const op = syncQueue[0];
+
+        // 1. GREEDY CREATE: Send POST as fast as possible
+        if (op.type === 'CREATE' && op.status === 'PENDING') {
+          await NotesApi.create(op.data);
+          op.status = 'CREATED';
+          rotations = 0;
+          
+          const nextOp = syncQueue[1];
+          if (nextOp && nextOp.type === 'CREATE' && nextOp.status === 'PENDING') {
+            syncQueue.push(syncQueue.shift()!);
+            continue;
           }
-          
+        }
+
+        // 2. BATCH RESOLUTION
+        if (op.type === 'CREATE' && op.status === 'CREATED') {
           const existingIds = new Set(notesStore.notes.map(n => n.note_id).filter(id => id > 0));
-          await this.loadNotes(true);
+          await this.loadNotes(true, true); // Force a reload to find IDs
           
-          let resolvedAny = false;
-          for (let i = 0; i < syncQueue.length; i++) {
+          let resolvedCount = 0;
+          for (let i = syncQueue.length - 1; i >= 0; i--) {
             const currentOp = syncQueue[i];
             if (currentOp.type === 'CREATE' && currentOp.status === 'CREATED') {
               const newestNote = notesStore.notes.find(n => n.note_id > 0 && !existingIds.has(n.note_id));
               if (newestNote) {
-                const oldId = currentOp.id;
-                const newId = newestNote.note_id;
-                notesStore.replaceNoteId(oldId, newId);
-                (currentOp as any).resolved = true;
-                resolvedAny = true;
-                existingIds.add(newId);
+                notesStore.replaceNoteId(currentOp.id, newestNote.note_id);
+                syncQueue.splice(i, 1);
+                existingIds.add(newestNote.note_id);
+                resolvedCount++;
               }
             }
           }
 
-          if (resolvedAny) {
-            for (let i = syncQueue.length - 1; i >= 0; i--) {
-              if ((syncQueue[i] as any).resolved) {
-                syncQueue.splice(i, 1);
-                notesStore.isCreating = false;
-              }
-            }
+          if (resolvedCount > 0) {
+            notesStore.isCreating = false;
+            rotations = 0;
+            continue;
           } else {
-            throw new Error('RETRY_LOAD_FOR_ID');
+            syncQueue.push(syncQueue.shift()!);
+            rotations++;
+            continue;
           }
-        } else if (op.type === 'UPDATE') {
+        }
+
+        // 3. NORMAL OPERATIONS (UPDATE/DELETE)
+        if (op.type === 'UPDATE') {
           if (op.id < 0) {
-            syncQueue.shift();
-            syncQueue.push(op);
-            break; 
+            const hasCreate = syncQueue.some(o => o.id === op.id && o.type === 'CREATE');
+            if (!hasCreate) {
+              syncQueue.shift();
+              notesStore.setSyncing(op.id, false);
+              rotations = 0;
+              continue;
+            }
+            syncQueue.push(syncQueue.shift()!);
+            rotations++;
+            continue; 
           }
           await NotesApi.update({ id: op.id, ...op.data });
           notesStore.setSyncing(op.id, false);
           syncQueue.shift();
+          rotations = 0;
+          // IMPORTANT: Trigger a silent but forced reload to clear the spinner from local state
+          this.loadNotes(true, true).catch(() => {});
         } else if (op.type === 'DELETE') {
           if (op.id > 0) {
             await NotesApi.delete(op.id);
           }
           syncQueue.shift();
-        }
-      } catch (error: any) {
-        if (error.message === 'RATE_LIMIT_EXCEEDED' || error.message === 'RETRY_LOAD_FOR_ID') {
-          // No need to call handleRateLimit here, apiClient.ts already did it
-          op.retryCount++;
-          if (op.retryCount > 20) {
-             syncQueue.shift();
-             notesStore.isCreating = false;
-          }
-          // The while loop in processQueue will re-run, 
-          // and apiClient will block on the new backoff delay.
-          continue; 
-        } else {
-          syncQueue.shift();
-          notesStore.isCreating = false;
-          if (op.type === 'UPDATE') notesStore.setSyncing(op.id, false);
+          rotations = 0;
+          // Refresh after delete
+          this.loadNotes(true, true).catch(() => {});
         }
       }
+    } catch (error: any) {
+      if (error.message === 'RATE_LIMIT_EXCEEDED' || error.message === 'RETRY_LOAD_FOR_ID') {
+        // apiClient handled the delay
+      } else {
+        console.error(`[Sync] Permanent failure:`, error);
+        const op = syncQueue.shift();
+        if (op?.type === 'UPDATE') notesStore.setSyncing(op.id, false);
+        notesStore.isCreating = false;
+      }
+    } finally {
+      isProcessingQueue = false;
     }
-
-    isProcessingQueue = false;
   }
 }
